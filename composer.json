@@ -1,0 +1,33 @@
+{
+    "name": "slowlyo/owl-log-viewer",
+    "alias": "系统日志视图",
+    "description": "更方便的查看laravel日志",
+    "type": "library",
+    "version": "1.0.0",
+    "keywords": ["owl-admin", "extension"],
+    "homepage": "https://github.com/slowlyo/owl-log-viewer",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "slowlyo",
+            "email": "slowlyo_email@qq.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.0",
+        "slowlyo/owl-admin": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Slowlyo\\OwlLogViewer\\": "src/"
+        }
+    },
+    "extra": {
+        "owl-admin": "Slowlyo\\OwlLogViewer\\OwlLogViewerServiceProvider",
+        "laravel": {
+            "providers": [
+                "Slowlyo\\OwlLogViewer\\OwlLogViewerServiceProvider"
+            ]
+        }
+    }
+}
