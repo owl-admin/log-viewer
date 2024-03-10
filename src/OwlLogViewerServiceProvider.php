@@ -14,11 +14,4 @@ class OwlLogViewerServiceProvider extends ServiceProvider
             'icon'  => 'octicon:log-24',
         ],
     ];
-
-	public function settingForm()
-	{
-	    return $this->baseSettingForm()->body([
-            TextControl::make()->name('value')->label('Value')->required(true),
-	    ]);
-	}
 }
