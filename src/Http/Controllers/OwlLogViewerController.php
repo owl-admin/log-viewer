@@ -2,8 +2,6 @@
 
 namespace Slowlyo\OwlLogViewer\Http\Controllers;
 
-use Slowlyo\OwlAdmin\Admin;
-use Illuminate\Support\Facades\Crypt;
 use Slowlyo\OwlAdmin\Controllers\AdminController;
 use Rap2hpoutre\LaravelLogViewer\LaravelLogViewer;
 
@@ -40,16 +38,46 @@ class OwlLogViewerController extends AdminController
     public function view()
     {
         $folderFiles = [];
-        if ($this->request->input('f')) {
-            $this->log_viewer->setFolder(Crypt::decrypt($this->request->input('f')));
-            $folderFiles = $this->log_viewer->getFolderFiles(true);
-        }
-        if ($this->request->input('l')) {
-            $this->log_viewer->setFile(Crypt::decrypt($this->request->input('l')));
+        if ($l = $this->request->input('l')) {
+            if (is_file($l)) {
+                $this->log_viewer->setFile($l);
+            }
         }
 
-        if ($early_return = $this->earlyReturn()) {
-            return $early_return;
+        try {
+            if ($this->request->input('dl')) {
+                return $this->download($this->pathFromInput('dl'));
+            } else if ($this->request->has('clean')) {
+                app('files')->put($this->pathFromInput('clean'), '');
+
+                return $this->response()->success();
+            } else if ($this->request->has('del')) {
+                app('files')->delete($this->pathFromInput('del'));
+
+                return $this->response()->success();
+            } else if ($this->request->has('delall')) {
+                $files = ($this->log_viewer->getFolderName())
+                    ? $this->log_viewer->getFolderFiles(true)
+                    : $this->log_viewer->getFiles(true);
+                foreach ($files as $file) {
+                    app('files')->delete($this->log_viewer->pathToLogFile($file));
+                }
+
+                return $this->response()->success();
+            }
+        } catch (\Throwable $e) {
+            admin_abort($e->getMessage());
+        }
+
+        $files = $this->log_viewer->getFiles();
+
+        foreach ($files as &$f) {
+            $search = config('logviewer.storage_path') ?: storage_path('logs');
+
+            $f = [
+                'label' => str_replace($search . '/', '', $f),
+                'value' => $f,
+            ];
         }
 
         $data = [
@@ -57,7 +85,7 @@ class OwlLogViewerController extends AdminController
             'folders'        => $this->log_viewer->getFolders(),
             'current_folder' => $this->log_viewer->getFolderName(),
             'folder_files'   => $folderFiles,
-            'files'          => $this->log_viewer->getFiles(true),
+            'files'          => $files,
             'current_file'   => $this->log_viewer->getFileName(),
             'standardFormat' => true,
             'structure'      => $this->log_viewer->foldersAndFiles(),
@@ -65,9 +93,9 @@ class OwlLogViewerController extends AdminController
 
         ];
 
-        // if ($this->request->wantsJson()) {
-        //     return $data;
-        // }
+        if ($this->request->wantsJson()) {
+            return $this->response()->success($data);
+        }
 
         if (is_array($data['logs']) && count($data['logs']) > 0) {
             $firstLog = reset($data['logs']);
@@ -78,52 +106,88 @@ class OwlLogViewerController extends AdminController
             }
         }
 
-        return app('view')->make($this->view_log, $data);
+        return $this->response()->success(['view' => app('view')->make($this->view_log, $data)->render()]);
     }
 
     public function index()
     {
-        $schema = $this->basePage()->bodyClassName('custom-page')->css([
-            '.bg-\[var\(--owl-body-bg\)\]' => ['background' => 'white'],
-            '.custom-page'                 => ['height' => 'calc(100vh - 65px)', 'overflow' => 'hidden'],
-            '.p-5'                         => ['padding' => '0 !important'],
+        $schema = $this->basePage()->css([
+            '.cxd-Tree-itemArrowPlaceholder' => ['display' => 'none'],
+            '.cxd-Tree-itemLabel'            => ['padding-left' => '0 !important'],
         ])->body([
-            amis()->IFrame()
-                ->className('my-iframe')
-                ->src('/' . Admin::config('admin.route.prefix') . '/owl-log-viewer'),
+            amis()->Service()->name('log_viewer_service')->api([
+                'url'    => '/owl-log-viewer?l=${l}',
+                'method' => 'post',
+                'data'   => [],
+            ])->body([
+                amis()->Page()->body([
+                    amis()->Flex()->items([
+                        amis()->Card()->className('w-1/4 mr-5 mb-0 min-w-xs')->body([
+                            amis()->ButtonToolbar()->className('mb-3')->buttons([
+                                amis()->Action()
+                                    ->level('success')
+                                    ->label('下载')
+                                    ->icon('fa fa-download')
+                                    ->actionType('download')
+                                    ->reload('log_viewer_service')
+                                    ->api('post:/owl-log-viewer?dl=${l}'),
+                                amis()->AjaxAction()
+                                    ->level('warning')
+                                    ->label('清空')
+                                    ->icon('fa fa-file-alt')
+                                    ->reload('log_viewer_service')
+                                    ->api('post:/owl-log-viewer?clean=${l}'),
+                                amis()->AjaxAction()
+                                    ->level('danger')
+                                    ->label('删除')
+                                    ->icon('fa fa-trash-alt')
+                                    ->reload('log_viewer_service')
+                                    ->api('post:/owl-log-viewer?del=${l}'),
+                            ]),
+                            amis()->TreeControl('l')->source('${files}')->searchable()->selectFirst(),
+                        ]),
+                        amis()->CRUDTable()
+                            ->className('w-3/4')
+                            ->source('${logs}')
+                            ->tableClassName('pt-3')
+                            ->footable()
+                            ->columns([
+                                amis()->TableColumn('level', 'Level')
+                                    ->classNameExpr('font-bold text-${level_class}')
+                                    ->width(200)
+                                    ->sortable(),
+                                amis()->TableColumn('date', 'Date')->width(200)->sortable(),
+                                amis()->TableColumn('text', 'Content')
+                                    ->type('tpl')
+                                    ->tpl('${ text |truncate:200 }')
+                                    ->popOver(
+                                        amis()->SchemaPopOver()
+                                            ->trigger('hover')
+                                            ->showIcon(false)
+                                            ->position('right-top')
+                                            ->body(
+                                                amis()->Code()->value('${text | raw}')
+                                            )
+                                    ),
+                                amis()->Operation()->label('Stack')->buttons([
+                                    amis()->DialogAction()->label('View')->level('link')->dialog(
+                                        amis()->Dialog()
+                                            ->title('Stack')
+                                            ->size('xl')
+                                            ->actions([])
+                                            ->closeOnOutside()
+                                            ->body([
+                                                amis()->Code()->value('${stack | raw}'),
+                                            ])
+                                    ),
+                                ])->set('width', 120),
+                            ]),
+                    ]),
+                ]),
+            ]),
         ]);
 
         return $this->response()->success($schema);
-    }
-
-    /**
-     * @return bool|mixed
-     * @throws \Exception
-     */
-    private function earlyReturn()
-    {
-        if ($this->request->input('f')) {
-            $this->log_viewer->setFolder(Crypt::decrypt($this->request->input('f')));
-        }
-
-        if ($this->request->input('dl')) {
-            return $this->download($this->pathFromInput('dl'));
-        } else if ($this->request->has('clean')) {
-            app('files')->put($this->pathFromInput('clean'), '');
-            return $this->redirect(url()->previous());
-        } else if ($this->request->has('del')) {
-            app('files')->delete($this->pathFromInput('del'));
-            return $this->redirect($this->request->url());
-        } else if ($this->request->has('delall')) {
-            $files = ($this->log_viewer->getFolderName())
-                ? $this->log_viewer->getFolderFiles(true)
-                : $this->log_viewer->getFiles(true);
-            foreach ($files as $file) {
-                app('files')->delete($this->log_viewer->pathToLogFile($file));
-            }
-            return $this->redirect($this->request->url());
-        }
-        return false;
     }
 
     /**
@@ -134,35 +198,16 @@ class OwlLogViewerController extends AdminController
      */
     private function pathFromInput($input_string)
     {
-        return $this->log_viewer->pathToLogFile(Crypt::decrypt($this->request->input($input_string)));
-    }
-
-    /**
-     * @param $to
-     *
-     * @return mixed
-     */
-    private function redirect($to)
-    {
-        if (function_exists('redirect')) {
-            return redirect($to);
-        }
-
-        return app('redirect')->to($to);
+        return $this->log_viewer->pathToLogFile($this->request->input($input_string));
     }
 
     /**
      * @param string $data
      *
-     * @return mixed
+     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse
      */
     private function download($data)
     {
-        if (function_exists('response')) {
-            return response()->download($data);
-        }
-
-        // For laravel 4.2
-        return app('\Illuminate\Support\Facades\Response')->download($data);
+        return response()->download($data);
     }
 }
