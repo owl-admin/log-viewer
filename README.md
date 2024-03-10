@@ -1,4 +1,4 @@
-# OwlAdmin 日志擦好看
+# OwlAdmin 日志查看
 
 ## 效果
 
