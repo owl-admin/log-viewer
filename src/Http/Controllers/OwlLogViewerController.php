@@ -134,12 +134,14 @@ class OwlLogViewerController extends AdminController
                                 amis()->AjaxAction()
                                     ->level('warning')
                                     ->label('清空')
+                                    ->confirmText('该操作将清空日志文件')
                                     ->icon('fa fa-file-alt')
                                     ->reload('log_viewer_service')
                                     ->api('post:/owl-log-viewer?clean=${l}'),
                                 amis()->AjaxAction()
                                     ->level('danger')
                                     ->label('删除')
+                                    ->confirmText('该操作将删除日志文件')
                                     ->icon('fa fa-trash-alt')
                                     ->reload('log_viewer_service')
                                     ->api('post:/owl-log-viewer?del=${l}'),
