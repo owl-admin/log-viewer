@@ -15,7 +15,8 @@
     ],
     "require": {
         "php": ">=8.0",
-        "slowlyo/owl-admin": "*"
+        "slowlyo/owl-admin": "*",
+        "rap2hpoutre/laravel-log-viewer": "*"
     },
     "autoload": {
         "psr-4": {
