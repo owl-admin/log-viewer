@@ -146,7 +146,7 @@ class OwlLogViewerController extends AdminController
                                     ->reload('log_viewer_service')
                                     ->api('post:/owl-log-viewer?del=${l}'),
                             ]),
-                            amis()->TreeControl('l')->source('${files}')->searchable()->selectFirst(),
+                            amis()->TreeControl('l')->heightAuto(true)->source('${files}')->searchable()->selectFirst(),
                         ]),
                         amis()->CRUDTable()
                             ->className('w-3/4')
